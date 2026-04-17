@@ -1,6 +1,8 @@
 import asyncio
 import os
 import smtplib
+import traceback
+from email.header import Header
 from email.mime.text import MIMEText
 
 from aiogram import Bot, Dispatcher, types, F
@@ -14,6 +16,7 @@ from fastapi import FastAPI, Request, Response
 
 BOT_TOKEN = os.environ["BOT_TOKEN"]
 OWNER_ID = int(os.environ["OWNER_ID"])
+CHANNEL_ID = int(os.environ["CHANNEL_ID"])
 GMAIL_ADDRESS = os.environ["GMAIL_ADDRESS"]
 GMAIL_APP_PASSWORD = os.environ["GMAIL_APP_PASSWORD"]
 REDIS_URL = os.environ["REDIS_URL"]
@@ -64,14 +67,16 @@ def utf16_len(text: str) -> int:
 def send_email(subject: str, body: str) -> None:
     try:
         msg = MIMEText(body, "plain", "utf-8")
-        msg["Subject"] = subject
+        msg["Subject"] = Header(subject, "utf-8")
         msg["From"] = GMAIL_ADDRESS
         msg["To"] = GMAIL_ADDRESS
         with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
             server.login(GMAIL_ADDRESS, GMAIL_APP_PASSWORD)
             server.sendmail(GMAIL_ADDRESS, GMAIL_ADDRESS, msg.as_string())
+        print(f"Email sent OK to {GMAIL_ADDRESS}")
     except Exception as e:
         print(f"Email error: {e}")
+        traceback.print_exc()
 
 
 async def send_notification(text_lines: str, user: types.User, subject: str) -> None:
@@ -94,9 +99,9 @@ async def send_notification(text_lines: str, user: types.User, subject: str) -> 
             user=user,
         )
     try:
-        await bot.send_message(chat_id=OWNER_ID, text=full_text, entities=[entity])
+        await bot.send_message(chat_id=CHANNEL_ID, text=full_text, entities=[entity])
     except Exception:
-        await bot.send_message(chat_id=OWNER_ID, text=full_text)
+        await bot.send_message(chat_id=CHANNEL_ID, text=full_text)
 
     loop = asyncio.get_running_loop()
     await loop.run_in_executor(
