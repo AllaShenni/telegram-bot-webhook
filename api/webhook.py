@@ -1,4 +1,5 @@
 import asyncio
+import hmac
 import os
 import smtplib
 import traceback
@@ -17,6 +18,7 @@ from fastapi import FastAPI, Request, Response
 BOT_TOKEN = os.environ["BOT_TOKEN"]
 OWNER_ID = int(os.environ["OWNER_ID"])
 CHANNEL_ID = int(os.environ["CHANNEL_ID"])
+WEBHOOK_SECRET = os.environ["WEBHOOK_SECRET"]
 GMAIL_ADDRESS = os.environ["GMAIL_ADDRESS"]
 GMAIL_APP_PASSWORD = os.environ["GMAIL_APP_PASSWORD"]
 REDIS_URL = os.environ["REDIS_URL"]
@@ -194,7 +196,13 @@ async def fallback_handler(message: types.Message, state: FSMContext) -> None:
 
 @app.post("/api/webhook")
 async def handle_webhook(request: Request) -> Response:
-    data = await request.json()
+    token = request.headers.get("X-Telegram-Bot-Api-Secret-Token", "")
+    if not hmac.compare_digest(token, WEBHOOK_SECRET):
+        return Response(status_code=403)
+    try:
+        data = await request.json()
+    except Exception:
+        return Response(status_code=400)
     update = Update.model_validate(data)
     await dp.feed_update(bot=bot, update=update)
     return Response(status_code=200)

@@ -6,7 +6,7 @@ from aiogram import Bot
 
 async def main(webhook_url: str) -> None:
     bot = Bot(token=os.environ["BOT_TOKEN"])
-    await bot.set_webhook(webhook_url)
+    await bot.set_webhook(webhook_url, secret_token=os.environ["WEBHOOK_SECRET"])
     info = await bot.get_webhook_info()
     print(f"Webhook set: {info.url}")
     print(f"Pending updates: {info.pending_update_count}")
