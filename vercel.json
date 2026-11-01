@@ -3,6 +3,10 @@
     { "src": "api/webhook.py", "use": "@vercel/python" }
   ],
   "routes": [
-    { "src": "/api/webhook", "dest": "api/webhook.py" }
+    { "src": "/api/webhook", "dest": "api/webhook.py" },
+    { "src": "/api/keepalive", "dest": "api/webhook.py" }
+  ],
+  "crons": [
+    { "path": "/api/keepalive", "schedule": "0 6 1,15 * *" }
   ]
 }

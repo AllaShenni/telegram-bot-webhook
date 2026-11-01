@@ -4,3 +4,6 @@ __pycache__/
 .vercel/
 venv/
 .venv/
+
+.vercel
+.env*

@@ -2,6 +2,7 @@ import asyncio
 import hmac
 import os
 import smtplib
+import time
 import traceback
 from email.header import Header
 from email.mime.text import MIMEText
@@ -21,7 +22,8 @@ CHANNEL_ID = int(os.environ["CHANNEL_ID"])
 WEBHOOK_SECRET = os.environ["WEBHOOK_SECRET"]
 GMAIL_ADDRESS = os.environ["GMAIL_ADDRESS"]
 GMAIL_APP_PASSWORD = os.environ["GMAIL_APP_PASSWORD"]
-REDIS_URL = os.environ["REDIS_URL"]
+# BOTDB_REDIS_URL is set by the Vercel Upstash integration; REDIS_URL is the legacy manual value.
+REDIS_URL = os.environ.get("BOTDB_REDIS_URL") or os.environ["REDIS_URL"]
 
 storage = RedisStorage.from_url(REDIS_URL)
 bot = Bot(token=BOT_TOKEN)
@@ -75,10 +77,9 @@ def send_email(subject: str, body: str) -> None:
         with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
             server.login(GMAIL_ADDRESS, GMAIL_APP_PASSWORD)
             server.sendmail(GMAIL_ADDRESS, GMAIL_ADDRESS, msg.as_string())
-        print(f"Email sent OK to {GMAIL_ADDRESS}")
+        print("Email sent OK")
     except Exception as e:
-        print(f"Email error: {e}")
-        traceback.print_exc()
+        print(f"Email error: {type(e).__name__}: {e}")
 
 
 async def send_notification(text_lines: str, user: types.User, subject: str) -> None:
@@ -192,6 +193,36 @@ async def free_contact_handler(message: types.Message, state: FSMContext) -> Non
 async def fallback_handler(message: types.Message, state: FSMContext) -> None:
     if await state.get_state() is None:
         await message.answer(WELCOME_TEXT, reply_markup=main_keyboard())
+
+
+KEEPALIVE_KEY = "keepalive:last_ping"
+KEEPALIVE_MIN_INTERVAL_S = 24 * 60 * 60
+CRON_SCHEDULE_HEADER = "x-vercel-cron-schedule"
+
+
+@app.get("/api/keepalive")
+async def keepalive(request: Request) -> Response:
+    """Touch Redis so the free Upstash database is never archived for inactivity.
+
+    Triggered by the Vercel cron in vercel.json. Writes at most once per day,
+    so repeated or spoofed calls cost a single read.
+    """
+    cron_secret = os.environ.get("CRON_SECRET")
+    if cron_secret:
+        auth = request.headers.get("authorization", "")
+        if not hmac.compare_digest(auth, f"Bearer {cron_secret}"):
+            return Response(status_code=401)
+    elif CRON_SCHEDULE_HEADER not in request.headers:
+        return Response(status_code=403)
+
+    redis = storage.redis
+    now = int(time.time())
+    last = await redis.get(KEEPALIVE_KEY)
+    if last is not None and now - int(last) < KEEPALIVE_MIN_INTERVAL_S:
+        return Response(content="skipped", status_code=200)
+    await redis.set(KEEPALIVE_KEY, str(now))
+    print(f"Keepalive OK at {now}")
+    return Response(content="ok", status_code=200)
 
 
 @app.post("/api/webhook")
